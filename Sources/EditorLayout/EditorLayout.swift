@@ -22,12 +22,12 @@ public struct EditorLayoutMetrics: Equatable, Sendable {
     public init(
         leftMinWidth: CGFloat = 200,
         leftIdealWidth: CGFloat = 260,
-        leftMaxWidth: CGFloat? = 420,
+        leftMaxWidth: CGFloat? = nil,
         centerMinWidth: CGFloat = 420,
         centerMinHeight: CGFloat = 300,
         rightMinWidth: CGFloat = 260,
         rightIdealWidth: CGFloat = 320,
-        rightMaxWidth: CGFloat? = 520,
+        rightMaxWidth: CGFloat? = nil,
         bottomMinHeight: CGFloat = 120,
         bottomIdealHeight: CGFloat = 220,
         bottomMaxHeight: CGFloat? = 800
@@ -143,22 +143,19 @@ public struct EditorLayoutContainer<
     @ViewBuilder
     private var rootShell: some View {
         #if os(macOS)
-        if showsLeftSidebar {
-            HSplitView {
-                flexibleContainer(sidebar)
-                    .frame(
-                        minWidth: metrics.leftMinWidth,
-                        idealWidth: metrics.leftIdealWidth,
-                        maxWidth: metrics.leftMaxWidth,
-                        maxHeight: .infinity,
-                        alignment: .topLeading
-                    )
+        HSplitView {
+            flexibleContainer(sidebar)
+                .frame(
+                    minWidth: resolvedLeftSidebarMinWidth,
+                    idealWidth: resolvedLeftSidebarIdealWidth,
+                    maxWidth: resolvedLeftSidebarMaxWidth,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+                .opacity(showsLeftSidebar ? 1 : 0)
+                .allowsHitTesting(showsLeftSidebar)
+                .accessibilityHidden(!showsLeftSidebar)
 
-                flexibleContainer(centerColumn)
-                    .frame(minWidth: metrics.centerMinWidth, maxWidth: .infinity, alignment: .topLeading)
-                    .frame(minHeight: metrics.centerMinHeight, maxHeight: .infinity, alignment: .topLeading)
-            }
-        } else {
             flexibleContainer(centerColumn)
                 .frame(minWidth: metrics.centerMinWidth, maxWidth: .infinity, alignment: .topLeading)
                 .frame(minHeight: metrics.centerMinHeight, maxHeight: .infinity, alignment: .topLeading)
@@ -180,6 +177,19 @@ public struct EditorLayoutContainer<
         }
         .navigationSplitViewStyle(.balanced)
         #endif
+    }
+
+    private var resolvedLeftSidebarMinWidth: CGFloat {
+        showsLeftSidebar ? metrics.leftMinWidth : 0
+    }
+
+    private var resolvedLeftSidebarIdealWidth: CGFloat {
+        showsLeftSidebar ? metrics.leftIdealWidth : 0
+    }
+
+    private var resolvedLeftSidebarMaxWidth: CGFloat? {
+        guard showsLeftSidebar else { return 0 }
+        return metrics.leftMaxWidth
     }
 
     @ViewBuilder
