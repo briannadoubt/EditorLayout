@@ -1,11 +1,32 @@
 import SwiftUI
 
+@MainActor public struct ToggleSidebarAction: Identifiable, Equatable {
+    
+    public let id: String
+    
+    public nonisolated init(id: String) {
+        self.id = id
+    }
+    
+    public func callAsFunction() {
+        NSApp.keyWindow?.firstResponder?.tryToPerform(
+            #selector(NSSplitViewController.toggleSidebar(_:)),
+            with: nil
+        )
+    }
+}
+
+public extension EnvironmentValues {
+    @Entry var toggleSidebar: ToggleSidebarAction = .init(id: "toggleSidebar")
+}
+
 /// A reusable editor-style shell that composes app content via view builders.
 public struct EditorLayout<
     Sidebar: View,
     Content: View,
     Inspector: View
 >: View {
+    @Binding private var isSidebarPresented: Bool
     @Binding private var isInspectorPresented: Bool
     @Binding var columnVisibility: NavigationSplitViewVisibility
     @Binding var preferredCompactColumn: NavigationSplitViewColumn
@@ -15,6 +36,7 @@ public struct EditorLayout<
     private let inspector: Inspector
 
     public init(
+        isSidebarPresented: Binding<Bool>,
         isInspectorPresented: Binding<Bool>,
         columnVisibility: Binding<NavigationSplitViewVisibility>,
         preferredCompactColumn: Binding<NavigationSplitViewColumn>,
@@ -22,6 +44,7 @@ public struct EditorLayout<
         @ViewBuilder content: () -> Content,
         @ViewBuilder inspector: () -> Inspector
     ) {
+        _isSidebarPresented = isSidebarPresented
         _isInspectorPresented = isInspectorPresented
         _columnVisibility = columnVisibility
         _preferredCompactColumn = preferredCompactColumn
@@ -31,24 +54,30 @@ public struct EditorLayout<
     }
 
     public var body: some View {
-        NavigationSplitView(
-//            columnVisibility: $columnVisibility,
-//            preferredCompactColumn: $preferredCompactColumn
-        ) {
+//        NavigationSplitView {
+//            sidebar
+//                .listStyle(.sidebar)
+//                .navigationSplitViewColumnWidth(ideal: 270)
+//        } detail: {
+//            content
+//                .scrollEdgeEffectStyle(.soft, for: .top)
+//                .frame(minWidth: 320)
+//        }
+//        .navigationSplitViewStyle(.balanced)
+        NavigationView {
             sidebar
-                .navigationSplitViewColumnWidth(ideal: 280)
-        } detail: {
+                .listStyle(.sidebar)
             content
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .frame(minWidth: 320)
         }
         .inspector(isPresented: $isInspectorPresented) {
             inspector
-                .interactionActivityTrackingTag("stuff")
-                .inspectorColumnWidth(ideal: 280)
+                .listStyle(.sidebar)
+                .inspectorColumnWidth(min: 100, ideal: 270, max: 599)
                 .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button("Inspector", systemImage: "sidebar.right") {
-                            isInspectorPresented.toggle()
-                        }
+                    Button("Inspector", systemImage: "sidebar.right") {
+                        isInspectorPresented.toggle()
                     }
                 }
         }

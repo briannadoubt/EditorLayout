@@ -3,34 +3,47 @@ import SwiftUI
 
 @main
 struct EditorLayoutDemoApp: App {
+    @AppStorage("NSConstraintBasedLayoutVisualizeMutuallyExclusiveConstraints") var visualizeMutuallyExclusiveConstraints: Bool = true
+    init() {
+        visualizeMutuallyExclusiveConstraints = true
+    }
     var body: some SwiftUI.Scene {
-        WindowGroup {
+        WindowGroup("Editor") {
             DemoEditorLayout()
         }
         .windowToolbarStyle(.unifiedCompact)
+        .windowManagerRole(.automatic)
         .defaultLaunchBehavior(.presented)
         .menuBarExtraStyle(.window)
-        .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.automatic)
+//        .defaultSize(width: 400, height: 200)
+//        .windowResizability(.contentMinSize)
     }
 }
 
 private struct DemoEditorLayout: View {
+    @State private var isSidebarPresented: Bool = true
     @State private var isInspectorPresented: Bool = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
 
     var body: some View {
         EditorLayout(
+            isSidebarPresented: $isSidebarPresented,
             isInspectorPresented: $isInspectorPresented,
             columnVisibility: $columnVisibility,
             preferredCompactColumn: $preferredCompactColumn,
         ) {
-            ZStack {}
+            List {
+                Text("Rawr")
+            }
         } content: {
-            ZStack {}
+            List {
+                Text("Meow")
+                    .padding()
+            }
         } inspector: {
-            ZStack {}
+            List {}
         }
     }
 }
