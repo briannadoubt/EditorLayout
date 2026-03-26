@@ -8,8 +8,10 @@
 
 ## Local Checks
 
-- Run `swift build`
 - Run `swift test`
+- Run `brew install xcodegen` if `xcodegen` is not already available.
+- Run `cd Demo && ./generate_project.sh`
+- Run `xcodebuild -project Demo/EditorLayoutDemo.xcodeproj -scheme EditorLayoutDemo -configuration Debug -destination 'generic/platform=macOS' build`
 
 ## Change Guidelines
 

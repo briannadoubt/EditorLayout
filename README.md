@@ -21,7 +21,7 @@ It focuses on the hard parts of app chrome rather than app-specific content:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/briannadoubt/EditorLayout.git", branch: "main")
+    .package(url: "https://github.com/briannadoubt/EditorLayout.git", from: "0.1.0")
 ]
 ```
 
@@ -41,7 +41,7 @@ struct RootView: View {
     @State private var showsBottomPanel = false
 
     var body: some View {
-        EditorLayoutContainer(
+        EditorLayout(
             showsLeftSidebar: $showsLeftSidebar,
             showsInspector: $showsInspector,
             showsBottomPanel: $showsBottomPanel
@@ -60,11 +60,30 @@ struct RootView: View {
 
 Use `EditorLayoutMetrics` to tune minimum, ideal, and maximum sizes for each region when your app needs a different shell profile.
 
+`EditorLayoutContainer` remains available as a deprecated compatibility alias if you already shipped code against the older name.
+
+## Demo App
+
+Generate the local macOS demo project with `XcodeGen`:
+
+```bash
+brew install xcodegen
+cd Demo
+./generate_project.sh
+open EditorLayoutDemo.xcodeproj
+```
+
+The demo project opens a sample app-specific shell built with `EditorLayout` and references the local package from the repo root.
+
 ## Testing
 
 ```bash
 swift test
 ```
+
+## Releasing
+
+Push a semver tag such as `0.1.0` or `v0.1.0` to run the release workflow and publish a GitHub release.
 
 ## License
 

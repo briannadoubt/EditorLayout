@@ -1,13 +1,20 @@
 import CoreGraphics
+import SwiftUI
 import Testing
 @testable import EditorLayout
 
-@Test func metricsDefaultToCappedLayout() async throws {
+@Test func metricsDefaultToStandardLayout() async throws {
     let metrics = EditorLayoutMetrics()
 
     #expect(metrics.leftMaxWidth == 420)
-    #expect(metrics.rightMaxWidth == 520)
+    #expect(metrics.rightMaxWidth == nil)
     #expect(metrics.bottomMaxHeight == 800)
+    #expect(
+        metrics.resolvedRightInspectorMaxWidth(
+            windowContentWidth: nil,
+            showsLeftSidebar: true
+        ) == 320
+    )
 }
 
 @Test func metricsCanDisableMaxConstraints() async throws {
@@ -63,4 +70,23 @@ import Testing
             showsLeftSidebar: true
         ) == 420
     )
+}
+
+@MainActor
+@Test func reusableLayoutAcceptsViewBuilders() async throws {
+    let layout = EditorLayout(
+        showsLeftSidebar: .constant(true),
+        showsInspector: .constant(true),
+        showsBottomPanel: .constant(false)
+    ) {
+        Text("Sidebar")
+    } content: {
+        Text("Content")
+    } inspector: {
+        Text("Inspector")
+    } bottomPanel: {
+        EmptyView()
+    }
+
+    _ = layout
 }

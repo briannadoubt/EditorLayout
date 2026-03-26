@@ -1,0 +1,36 @@
+name: EditorLayoutDemo
+options:
+  minimumXcodeGenVersion: 2.45.0
+  createIntermediateGroups: true
+packages:
+  EditorLayout:
+    path: ..
+targets:
+  EditorLayoutDemo:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: EditorLayoutDemo
+    dependencies:
+      - package: EditorLayout
+        product: EditorLayout
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.briannadoubt.EditorLayoutDemo
+        PRODUCT_NAME: EditorLayoutDemo
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: EditorLayoutDemo
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+schemes:
+  EditorLayoutDemo:
+    build:
+      targets:
+        EditorLayoutDemo: all
+    run:
+      config: Debug
+    archive:
+      config: Release

@@ -1,12 +1,16 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: ["main", "codex/**"]
-  pull_request:
+    tags:
+      - "*.*.*"
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 jobs:
-  build-and-test:
+  validate:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -23,4 +27,14 @@ jobs:
         run: ./generate_project.sh
       - name: Build Demo App
         working-directory: Demo
-        run: xcodebuild -project EditorLayoutDemo.xcodeproj -scheme EditorLayoutDemo -configuration Debug -destination 'generic/platform=macOS' build
+        run: xcodebuild -project EditorLayoutDemo.xcodeproj -scheme EditorLayoutDemo -configuration Release -destination 'generic/platform=macOS' build
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
