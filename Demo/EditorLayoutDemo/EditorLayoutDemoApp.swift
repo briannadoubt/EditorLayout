@@ -3,47 +3,38 @@ import SwiftUI
 
 @main
 struct EditorLayoutDemoApp: App {
-    @AppStorage("NSConstraintBasedLayoutVisualizeMutuallyExclusiveConstraints") var visualizeMutuallyExclusiveConstraints: Bool = true
-    init() {
-        visualizeMutuallyExclusiveConstraints = true
-    }
     var body: some SwiftUI.Scene {
-        WindowGroup("Editor") {
+        Window("Editor", id: "editor") {
             DemoEditorLayout()
         }
-        .windowToolbarStyle(.unifiedCompact)
-        .windowManagerRole(.automatic)
-        .defaultLaunchBehavior(.presented)
-        .menuBarExtraStyle(.window)
-        .windowStyle(.automatic)
-//        .defaultSize(width: 400, height: 200)
-//        .windowResizability(.contentMinSize)
+        .defaultSize(width: 900, height: 450)
     }
 }
 
 private struct DemoEditorLayout: View {
-    @State private var isSidebarPresented: Bool = true
-    @State private var isInspectorPresented: Bool = true
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
+    @State private var showsSidebar = true
+    @State private var showsInspector = true
 
     var body: some View {
-        EditorLayout(
-            isSidebarPresented: $isSidebarPresented,
-            isInspectorPresented: $isInspectorPresented,
-            columnVisibility: $columnVisibility,
-            preferredCompactColumn: $preferredCompactColumn,
+        EditorView(
+            showsSidebar: $showsSidebar,
+            showsInspector: $showsInspector
         ) {
-            List {
-                Text("Rawr")
-            }
+            EmptyView()
         } content: {
-            List {
-                Text("Meow")
-                    .padding()
-            }
+            EmptyView()
         } inspector: {
             List {}
+                .listStyle(.sidebar)
+        }
+        .toolbar {
+            Button("Sidebar", systemImage: "sidebar.left") {
+                showsSidebar.toggle()
+            }
+
+            Button("Inspector", systemImage: "sidebar.right") {
+                showsInspector.toggle()
+            }
         }
     }
 }

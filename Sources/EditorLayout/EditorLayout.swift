@@ -17,7 +17,7 @@ import SwiftUI
 }
 
 public extension EnvironmentValues {
-    @Entry var toggleSidebar: ToggleSidebarAction = .init(id: "toggleSidebar")
+    @Entry var toggleSidebar = ToggleSidebarAction(id: "toggleSidebar")
 }
 
 /// A reusable editor-style shell that composes app content via view builders.
@@ -54,32 +54,67 @@ public struct EditorLayout<
     }
 
     public var body: some View {
-//        NavigationSplitView {
-//            sidebar
-//                .listStyle(.sidebar)
-//                .navigationSplitViewColumnWidth(ideal: 270)
-//        } detail: {
-//            content
-//                .scrollEdgeEffectStyle(.soft, for: .top)
-//                .frame(minWidth: 320)
-//        }
-//        .navigationSplitViewStyle(.balanced)
-        NavigationView {
+        // MARK: NavigationSplitView (Works the best, inspector has bad bugs when resizing)
+        NavigationSplitView {
             sidebar
                 .listStyle(.sidebar)
+                .navigationSplitViewColumnWidth(min: 190, ideal: 270)
+        } detail: {
             content
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .frame(minWidth: 320)
+                .frame(minWidth: 240, idealWidth: 320)
+                .layoutPriority(1)
         }
+        .navigationSplitViewStyle(.balanced)
         .inspector(isPresented: $isInspectorPresented) {
             inspector
                 .listStyle(.sidebar)
-                .inspectorColumnWidth(min: 100, ideal: 270, max: 599)
+                .inspectorColumnWidth(min: 190, ideal: 270, max: 599)
                 .toolbar {
                     Button("Inspector", systemImage: "sidebar.right") {
                         isInspectorPresented.toggle()
                     }
                 }
         }
+        
+        // MARK: NavigationView (Looks the best, inspector has same problems and can't collapse sidebar
+//        NavigationView {
+//            sidebar
+//                .listStyle(.sidebar)
+//                .navigationSplitViewColumnWidth(min: 100, ideal: 270, max: 270)
+//            content
+//                .scrollEdgeEffectStyle(.soft, for: .top)
+//                .frame(minWidth: 320)
+//        }
+        
+        // MARK: HSplitView (Doesn't work without a lot of customization
+//        HSplitView {
+//            if isSidebarPresented {
+//                sidebar
+//                    .listStyle(.sidebar)
+//                    .frame(minWidth: 100, idealWidth: 270)
+//            }
+//            content
+//                .scrollEdgeEffectStyle(.soft, for: .top)
+//                .headerProminence(isSidebarPresented ? .increased : .standard)
+//                .frame(minWidth: 320)
+//            if isInspectorPresented {
+//                inspector
+//                    .listStyle(.sidebar)
+//                    .frame(minWidth: 100, idealWidth: 270)
+//            }
+//        }
+//        .toolbar {
+//            ToolbarItem(placement: .navigation) {
+//                Button("Inspector", systemImage: "sidebar.left") {
+//                    isSidebarPresented.toggle()
+//                }
+//            }
+//            ToolbarItem(placement: .primaryAction) {
+//                Button("Inspector", systemImage: "sidebar.right") {
+//                    isInspectorPresented.toggle()
+//                }
+//            }
+//        }
     }
 }

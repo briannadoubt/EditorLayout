@@ -3,14 +3,14 @@
 
 # EditorLayout
 
-`EditorLayout` is a macOS-first SwiftUI package for editor-style window shells with a left sidebar, a central workspace, a right inspector, and an optional bottom panel.
+`EditorLayout` is a macOS-first SwiftUI package for editor-style window shells with a left sidebar, a central workspace, and a right inspector.
 
 It focuses on the hard parts of app chrome rather than app-specific content:
 
-- stable split and inspector sizing
-- dynamic inspector width caps that preserve the minimum editor shell
-- a single host container that can show or hide sidebar, inspector, and bottom panel independently
-- a native macOS layout path with a SwiftUI fallback path for other Apple platforms
+- stable native split sizing backed by `NSSplitViewController`
+- independently collapsible left and right panes
+- a single host container that can show or hide sidebar and inspector independently
+- a simple SwiftUI API that lands on the macOS-native split view stack with minimal customization
 
 ## Requirements
 
@@ -36,31 +36,23 @@ import EditorLayout
 import SwiftUI
 
 struct RootView: View {
-    @State private var showsLeftSidebar = true
+    @State private var showsSidebar = true
     @State private var showsInspector = true
-    @State private var showsBottomPanel = false
 
     var body: some View {
-        EditorLayout(
-            showsLeftSidebar: $showsLeftSidebar,
-            showsInspector: $showsInspector,
-            showsBottomPanel: $showsBottomPanel
+        EditorView(
+            showsSidebar: $showsSidebar,
+            showsInspector: $showsInspector
         ) {
             ProjectSidebar()
         } content: {
             EditorWorkspace()
         } inspector: {
             InspectorPanel()
-        } bottomPanel: {
-            ConsolePanel()
         }
     }
 }
 ```
-
-Use `EditorLayoutMetrics` to tune minimum, ideal, and maximum sizes for each region when your app needs a different shell profile.
-
-`EditorLayoutContainer` remains available as a deprecated compatibility alias if you already shipped code against the older name.
 
 ## Demo App
 
@@ -73,7 +65,7 @@ cd Demo
 open EditorLayoutDemo.xcodeproj
 ```
 
-The demo project opens a sample app-specific shell built with `EditorLayout` and references the local package from the repo root.
+The demo project opens an empty three-pane shell built with `EditorView` and references the local package from the repo root.
 
 ## Testing
 
