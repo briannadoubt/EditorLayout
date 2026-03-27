@@ -11,6 +11,7 @@ It focuses on the hard parts of app chrome rather than app-specific content:
 - independently collapsible left and right panes
 - a single host container that can show or hide sidebar and inspector independently
 - a simple SwiftUI API that lands on the macOS-native split view stack with minimal customization
+- an Xcode-style split controller path with a regular right pane, bottom panel support, snap behavior, and layout state binding
 
 ## Requirements
 
@@ -54,6 +55,40 @@ struct RootView: View {
 }
 ```
 
+## Xcode-Style Split Example
+
+Use `EditorSplitView` when you want a regular split item on the right instead of AppKit's inspector semantics.
+
+```swift
+import EditorLayout
+import SwiftUI
+
+struct IDEWindow: View {
+    @State private var layoutState = EditorSplitLayoutState(
+        sidebarWidth: 220,
+        inspectorWidth: 280,
+        bottomHeight: 180,
+        showsSidebar: true,
+        showsInspector: true,
+        showsBottomPanel: true
+    )
+
+    var body: some View {
+        EditorSplitView(layoutState: $layoutState) {
+            ProjectSidebar()
+        } content: {
+            EditorWorkspace()
+        } inspector: {
+            InspectorPanel()
+        } bottom: {
+            TerminalPanel()
+        }
+    }
+}
+```
+
+`EditorSplitController` is also public if you need direct AppKit control, and `EditorStackController` provides a simple tab-backed content container for editor stacks.
+
 ## Demo App
 
 Generate the local macOS demo project with `XcodeGen`:
@@ -65,7 +100,7 @@ cd Demo
 open EditorLayoutDemo.xcodeproj
 ```
 
-The demo project opens an empty three-pane shell built with `EditorView` and references the local package from the repo root.
+The demo project opens an Xcode-style shell built with `EditorSplitView`, including a bottom panel and toolbar-driven pane toggles, and references the local package from the repo root.
 
 ## Testing
 

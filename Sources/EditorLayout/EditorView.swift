@@ -123,8 +123,9 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
 
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         contentItem = NSSplitViewItem(viewController: contentController)
-        inspectorItem = NSSplitViewItem(contentListWithViewController: inspectorController)
-        inspectorItem.canCollapse = true
+        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorController)
+        inspectorItem.minimumThickness = 220
+        inspectorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
 
         sidebarItem.isCollapsed = !showsSidebar
         inspectorItem.isCollapsed = !showsInspector
@@ -152,8 +153,30 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
     }
 
     public override func toggleInspector(_ sender: Any?) {
-        inspectorItem.animator().isCollapsed.toggle()
+        super.toggleInspector(sender)
         scheduleVisibilityReport()
+    }
+
+    public override func splitView(
+        _ splitView: NSSplitView,
+        effectiveRect proposedEffectiveRect: NSRect,
+        forDrawnRect drawnRect: NSRect,
+        ofDividerAt dividerIndex: Int
+    ) -> NSRect {
+        let baseRect = super.splitView(
+            splitView,
+            effectiveRect: proposedEffectiveRect,
+            forDrawnRect: drawnRect,
+            ofDividerAt: dividerIndex
+        )
+
+        guard dividerIndex == splitViewItems.count - 2 else {
+            return baseRect
+        }
+
+        let dividerRect = drawnRect.standardized.isEmpty ? proposedEffectiveRect.standardized : drawnRect.standardized
+        let dragRect = dividerRect.insetBy(dx: -4, dy: 0)
+        return baseRect.union(dragRect)
     }
 
     func update(
@@ -176,7 +199,7 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
         }
 
         if showsInspector != !inspectorItem.isCollapsed {
-            inspectorItem.isCollapsed = !showsInspector
+            super.toggleInspector(nil)
         }
 
         scheduleVisibilityReport()
