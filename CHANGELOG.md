@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Added live `EditorSplitLayoutState` reporting and application so split widths, bottom panel height, and pane visibility can round-trip through a single state model.
+- Reworked the local demo app into a preset-driven IDE mockup with toolbar layout modes, live telemetry, and a console panel.
 - Renamed the reusable builder-based shell to `EditorLayout` so apps import the composable API directly.
 - Kept `EditorLayoutContainer` as a deprecated compatibility alias for existing integrations.
 - Moved the demo sample view out of the package product and into the demo app target.

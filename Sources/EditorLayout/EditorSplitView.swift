@@ -112,25 +112,17 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
             inspector: inspectorController,
             bottom: bottomController,
             configuration: configuration,
-            initialState: EditorSplitLayoutState(
-                sidebarWidth: legacyLayoutState?.wrappedValue.sidebarWidth,
-                inspectorWidth: legacyLayoutState?.wrappedValue.inspectorWidth,
-                bottomHeight: legacyLayoutState?.wrappedValue.bottomHeight,
-                showsSidebar: showsSidebar,
-                showsInspector: showsInspector,
-                showsBottomPanel: bottom == nil ? false : showsBottomPanel
-            )
+            initialState: resolvedLayoutState()
         )
+        controller.layoutStateDidChange = { [weak coordinator = context.coordinator] state in
+            coordinator?.applyReportedLayoutState(state)
+        }
 
         context.coordinator.sidebarController = sidebarController
         context.coordinator.contentController = contentController
         context.coordinator.inspectorController = inspectorController
         context.coordinator.bottomController = bottomController
-        context.coordinator.lastAppliedVisibility = EditorSplitVisibilityState(
-            showsSidebar: showsSidebar,
-            showsInspector: showsInspector,
-            showsBottomPanel: bottom == nil ? false : showsBottomPanel
-        )
+        context.coordinator.lastAppliedLayoutState = resolvedLayoutState()
 
         return controller
     }
@@ -160,25 +152,22 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
 
         nsViewController.configuration = configuration
 
-        let visibility = EditorSplitVisibilityState(
+        let desiredLayoutState = resolvedLayoutState()
+        if context.coordinator.lastAppliedLayoutState != desiredLayoutState {
+            context.coordinator.lastAppliedLayoutState = desiredLayoutState
+            nsViewController.applyLayoutState(desiredLayoutState)
+        }
+    }
+
+    private func resolvedLayoutState() -> EditorSplitLayoutState {
+        EditorSplitLayoutState(
+            sidebarWidth: legacyLayoutState?.wrappedValue.sidebarWidth,
+            inspectorWidth: legacyLayoutState?.wrappedValue.inspectorWidth,
+            bottomHeight: legacyLayoutState?.wrappedValue.bottomHeight,
             showsSidebar: showsSidebar,
             showsInspector: showsInspector,
             showsBottomPanel: bottom == nil ? false : showsBottomPanel
         )
-        if context.coordinator.lastAppliedVisibility != visibility {
-            context.coordinator.lastAppliedVisibility = visibility
-            nsViewController.setSidebarVisible(visibility.showsSidebar)
-            nsViewController.setInspectorVisible(visibility.showsInspector)
-            nsViewController.setBottomPanelVisible(visibility.showsBottomPanel)
-
-            if let legacyLayoutState {
-                var state = legacyLayoutState.wrappedValue
-                state.showsSidebar = visibility.showsSidebar
-                state.showsInspector = visibility.showsInspector
-                state.showsBottomPanel = visibility.showsBottomPanel
-                legacyLayoutState.wrappedValue = state
-            }
-        }
     }
 
     @MainActor
@@ -191,7 +180,7 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
         fileprivate var contentController: EditorHostingViewController<Content>?
         fileprivate var inspectorController: EditorHostingViewController<Inspector>?
         fileprivate var bottomController: EditorAnyHostingViewController?
-        fileprivate var lastAppliedVisibility: EditorSplitVisibilityState?
+        fileprivate var lastAppliedLayoutState: EditorSplitLayoutState?
 
         fileprivate init(
             showsSidebar: Binding<Bool>,
@@ -204,11 +193,33 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
             self.showsBottomPanel = showsBottomPanel
             self.legacyLayoutState = legacyLayoutState
         }
-    }
-}
 
-private struct EditorSplitVisibilityState: Equatable {
-    let showsSidebar: Bool
-    let showsInspector: Bool
-    let showsBottomPanel: Bool
+        fileprivate func applyReportedLayoutState(_ state: EditorSplitLayoutState) {
+            lastAppliedLayoutState = state
+
+            if let legacyLayoutState, legacyLayoutState.wrappedValue != state {
+                Task { @MainActor [legacyLayoutState] in
+                    legacyLayoutState.wrappedValue = state
+                }
+            }
+
+            if showsSidebar.wrappedValue != state.showsSidebar {
+                Task { @MainActor [showsSidebar] in
+                    showsSidebar.wrappedValue = state.showsSidebar
+                }
+            }
+
+            if showsInspector.wrappedValue != state.showsInspector {
+                Task { @MainActor [showsInspector] in
+                    showsInspector.wrappedValue = state.showsInspector
+                }
+            }
+
+            if showsBottomPanel.wrappedValue != state.showsBottomPanel {
+                Task { @MainActor [showsBottomPanel] in
+                    showsBottomPanel.wrappedValue = state.showsBottomPanel
+                }
+            }
+        }
+    }
 }

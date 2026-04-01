@@ -121,7 +121,7 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
         contentController = EditorPaneViewController(rootView: content)
         inspectorController = EditorPaneViewController(rootView: inspector)
 
-        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        sidebarItem = NSSplitViewItem(viewController: sidebarController)
         contentItem = NSSplitViewItem(viewController: contentController)
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorController)
         inspectorItem.minimumThickness = 220

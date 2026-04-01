@@ -4,9 +4,14 @@ import SwiftUI
 @MainActor
 final class EditorHostingViewController<Root: View>: NSViewController {
     private let hostingController: NSHostingController<Root>
+    private let backgroundMaterial: NSVisualEffectView.Material?
 
-    init(rootView: Root) {
+    init(
+        rootView: Root,
+        backgroundMaterial: NSVisualEffectView.Material? = nil
+    ) {
         hostingController = NSHostingController(rootView: rootView)
+        self.backgroundMaterial = backgroundMaterial
         super.init(nibName: nil, bundle: nil)
         hostingController.sizingOptions = []
     }
@@ -17,7 +22,15 @@ final class EditorHostingViewController<Root: View>: NSViewController {
     }
 
     override func loadView() {
-        view = NSView()
+        if let backgroundMaterial {
+            let materialView = NSVisualEffectView()
+            materialView.material = backgroundMaterial
+            materialView.blendingMode = .withinWindow
+            materialView.state = .followsWindowActiveState
+            view = materialView
+        } else {
+            view = NSView()
+        }
     }
 
     override func viewDidLoad() {

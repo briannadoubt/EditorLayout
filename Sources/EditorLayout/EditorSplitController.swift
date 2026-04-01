@@ -4,6 +4,7 @@ import AppKit
 public struct EditorSplitConfiguration: Equatable, Sendable {
     public var sidebarMinimumWidth: CGFloat
     public var sidebarMaximumWidth: CGFloat
+    public var contentMinimumWidth: CGFloat
     public var inspectorMinimumWidth: CGFloat
     public var inspectorMaximumWidth: CGFloat
     public var inspectorSnapThreshold: CGFloat
@@ -15,6 +16,7 @@ public struct EditorSplitConfiguration: Equatable, Sendable {
     public init(
         sidebarMinimumWidth: CGFloat = 180,
         sidebarMaximumWidth: CGFloat = 320,
+        contentMinimumWidth: CGFloat = 270,
         inspectorMinimumWidth: CGFloat = 220,
         inspectorMaximumWidth: CGFloat = 500,
         inspectorSnapThreshold: CGFloat = 160,
@@ -25,6 +27,7 @@ public struct EditorSplitConfiguration: Equatable, Sendable {
     ) {
         self.sidebarMinimumWidth = sidebarMinimumWidth
         self.sidebarMaximumWidth = sidebarMaximumWidth
+        self.contentMinimumWidth = contentMinimumWidth
         self.inspectorMinimumWidth = inspectorMinimumWidth
         self.inspectorMaximumWidth = inspectorMaximumWidth
         self.inspectorSnapThreshold = inspectorSnapThreshold
@@ -63,6 +66,13 @@ public struct EditorSplitLayoutState: Equatable, Sendable {
 
 @MainActor
 public final class EditorSplitController: NSSplitViewController {
+    public var visibilityDidChange: ((Bool, Bool, Bool) -> Void)?
+    public var layoutStateDidChange: ((EditorSplitLayoutState) -> Void)?
+
+    public var layoutState: EditorSplitLayoutState {
+        snapshotLayoutState()
+    }
+
     public var configuration: EditorSplitConfiguration {
         didSet {
             guard isViewLoaded else {
@@ -86,6 +96,12 @@ public final class EditorSplitController: NSSplitViewController {
 
     private var hasAppliedInitialState = false
     private var currentVisibility: EditorSplitVisibility
+    private var pendingLayoutState: EditorSplitLayoutState
+    private var lastKnownSidebarWidth: CGFloat?
+    private var lastKnownInspectorWidth: CGFloat?
+    private var lastKnownBottomHeight: CGFloat?
+    private var lastReportedVisibility: EditorSplitVisibility?
+    private var lastReportedLayoutState: EditorSplitLayoutState?
 
     public init(
         sidebar: NSViewController,
@@ -100,6 +116,10 @@ public final class EditorSplitController: NSSplitViewController {
         inspectorViewController = inspector
         bottomViewController = bottom
         self.configuration = configuration
+        pendingLayoutState = initialState
+        lastKnownSidebarWidth = initialState.sidebarWidth
+        lastKnownInspectorWidth = initialState.inspectorWidth
+        lastKnownBottomHeight = initialState.bottomHeight
         currentVisibility = EditorSplitVisibility(
             showsSidebar: initialState.showsSidebar,
             showsInspector: initialState.showsInspector,
@@ -126,7 +146,36 @@ public final class EditorSplitController: NSSplitViewController {
 
     public override func viewDidAppear() {
         super.viewDidAppear()
+        applyInitialLayoutStateIfNeeded()
         hasAppliedInitialState = true
+        reportActualStateIfNeeded(force: true)
+    }
+
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        reportActualStateIfNeeded()
+    }
+
+    public override func splitView(
+        _ splitView: NSSplitView,
+        effectiveRect proposedEffectiveRect: NSRect,
+        forDrawnRect drawnRect: NSRect,
+        ofDividerAt dividerIndex: Int
+    ) -> NSRect {
+        let baseRect = super.splitView(
+            splitView,
+            effectiveRect: proposedEffectiveRect,
+            forDrawnRect: drawnRect,
+            ofDividerAt: dividerIndex
+        )
+        let dividerRect = drawnRect.standardized.isEmpty
+            ? proposedEffectiveRect.standardized
+            : drawnRect.standardized
+        let dragRect = splitView.isVertical
+            ? dividerRect.insetBy(dx: -4, dy: 0)
+            : dividerRect.insetBy(dx: 0, dy: -4)
+
+        return baseRect.union(dragRect)
     }
 
     public func replaceContentViewController(_ controller: NSViewController) {
@@ -165,6 +214,28 @@ public final class EditorSplitController: NSSplitViewController {
     public func replaceInspectorViewController(_ controller: NSViewController) {
         inspectorViewController = controller
         inspectorItem.viewController = controller
+    }
+
+    public func applyLayoutState(_ state: EditorSplitLayoutState) {
+        let normalizedState = normalizedLayoutState(state)
+        pendingLayoutState = normalizedState
+        lastKnownSidebarWidth = normalizedState.sidebarWidth ?? lastKnownSidebarWidth
+        lastKnownInspectorWidth = normalizedState.inspectorWidth ?? lastKnownInspectorWidth
+        lastKnownBottomHeight = normalizedState.bottomHeight ?? lastKnownBottomHeight
+
+        currentVisibility = EditorSplitVisibility(
+            showsSidebar: normalizedState.showsSidebar,
+            showsInspector: normalizedState.showsInspector,
+            showsBottomPanel: normalizedState.showsBottomPanel
+        )
+
+        guard isViewLoaded else {
+            return
+        }
+
+        applyVisibility(currentVisibility)
+        applyLayoutMeasurements(using: normalizedState)
+        reportActualStateIfNeeded(force: true)
     }
 
     public func setSidebarVisible(_ isVisible: Bool) {
@@ -217,10 +288,15 @@ public final class EditorSplitController: NSSplitViewController {
         setBottomPanelVisible(bottomItem.isCollapsed)
     }
 
+    public override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        reportActualStateIfNeeded()
+    }
+
     private func setupLayout() {
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarViewController)
         contentItem = NSSplitViewItem(viewController: contentViewController)
-        inspectorItem = NSSplitViewItem(viewController: inspectorViewController)
+        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorViewController)
 
         addSplitViewItem(sidebarItem)
         rebuildContentStack()
@@ -238,6 +314,9 @@ public final class EditorSplitController: NSSplitViewController {
                 bottom: bottomViewController,
                 configuration: configuration
             )
+            stack.layoutStateDidChange = { [weak self] in
+                self?.reportActualStateIfNeeded()
+            }
             contentStackController = stack
             bottomItem = stack.bottomItem
             contentItem = NSSplitViewItem(viewController: stack)
@@ -247,7 +326,7 @@ public final class EditorSplitController: NSSplitViewController {
             contentItem = NSSplitViewItem(viewController: contentViewController)
         }
 
-        contentItem.holdingPriority = .defaultLow
+        configureContentItem()
 
         if splitViewItems.indices.contains(1) {
             insertSplitViewItem(contentItem, at: 1)
@@ -256,14 +335,26 @@ public final class EditorSplitController: NSSplitViewController {
         }
     }
 
+    private func configureContentItem() {
+        contentItem.holdingPriority = .defaultLow
+
+        if #available(macOS 26.0, *) {
+            contentItem.automaticallyAdjustsSafeAreaInsets = true
+        }
+    }
+
     private func applyConfiguration() {
         sidebarItem.minimumThickness = configuration.sidebarMinimumWidth
         sidebarItem.maximumThickness = configuration.sidebarMaximumWidth
         sidebarItem.canCollapse = true
+        sidebarItem.holdingPriority = .defaultHigh
+
+        contentItem.minimumThickness = configuration.contentMinimumWidth
 
         inspectorItem.minimumThickness = configuration.inspectorMinimumWidth
         inspectorItem.maximumThickness = configuration.inspectorMaximumWidth
         inspectorItem.canCollapse = true
+        inspectorItem.holdingPriority = .defaultHigh
 
         bottomItem?.minimumThickness = configuration.bottomMinimumHeight
         bottomItem?.holdingPriority = .defaultLow
@@ -273,18 +364,47 @@ public final class EditorSplitController: NSSplitViewController {
     }
 
     private func applyVisibility(_ visibility: EditorSplitVisibility) {
+        let previousVisibility = currentVisibility
         currentVisibility = visibility
 
         guard isViewLoaded else {
             return
         }
 
+        if previousVisibility.showsSidebar,
+           visibility.showsSidebar == false
+        {
+            let currentSidebarWidth = sidebarItem.viewController.view.frame.width
+            if currentSidebarWidth > 0 {
+                lastKnownSidebarWidth = currentSidebarWidth
+            }
+        }
+
         if sidebarItem.isCollapsed == visibility.showsSidebar {
             sidebarItem.isCollapsed = !visibility.showsSidebar
         }
 
+        if previousVisibility.showsInspector,
+           visibility.showsInspector == false
+        {
+            let currentInspectorWidth = inspectorItem.viewController.view.frame.width
+            if currentInspectorWidth > 0 {
+                lastKnownInspectorWidth = currentInspectorWidth
+            }
+        }
+
         if inspectorItem.isCollapsed == visibility.showsInspector {
             inspectorItem.isCollapsed = !visibility.showsInspector
+        }
+
+        if previousVisibility.showsBottomPanel,
+           visibility.showsBottomPanel == false,
+           let bottomItem
+        {
+            let currentBottomHeight = bottomItem.viewController.view.frame.height
+            if currentBottomHeight > 0 {
+                lastKnownBottomHeight = currentBottomHeight
+            }
         }
 
         if let bottomItem, bottomItem.isCollapsed == visibility.showsBottomPanel {
@@ -292,12 +412,169 @@ public final class EditorSplitController: NSSplitViewController {
         }
 
         view.layoutSubtreeIfNeeded()
+
+        if previousVisibility.showsBottomPanel == false,
+           visibility.showsBottomPanel,
+           let contentStackController
+        {
+            restoreBottomPanelHeight(in: contentStackController)
+        }
+        reportActualStateIfNeeded(force: true)
+    }
+
+    private func applyInitialLayoutStateIfNeeded() {
+        guard hasAppliedInitialState == false else {
+            return
+        }
+
+        applyLayoutMeasurements(using: pendingLayoutState)
+    }
+
+    private func restoreBottomPanelHeight(in contentStackController: BottomPanelSplitController) {
+        let splitView = contentStackController.splitView
+        let targetHeight = max(
+            configuration.bottomMinimumHeight,
+            lastKnownBottomHeight ?? max(configuration.bottomMinimumHeight, 220)
+        )
+        let bottomDividerPosition = max(0, splitView.bounds.height - targetHeight)
+        splitView.setPosition(bottomDividerPosition, ofDividerAt: 0)
+        splitView.adjustSubviews()
+        view.layoutSubtreeIfNeeded()
+    }
+
+    private func applyLayoutMeasurements(using state: EditorSplitLayoutState) {
+        guard isViewLoaded else {
+            return
+        }
+
+        view.layoutSubtreeIfNeeded()
+
+        if let sidebarWidth = state.sidebarWidth,
+           currentVisibility.showsSidebar {
+            let clampedSidebarWidth = min(
+                configuration.sidebarMaximumWidth,
+                max(configuration.sidebarMinimumWidth, sidebarWidth)
+            )
+            splitView.setPosition(clampedSidebarWidth, ofDividerAt: 0)
+            lastKnownSidebarWidth = clampedSidebarWidth
+        }
+
+        if let inspectorWidth = state.inspectorWidth,
+           currentVisibility.showsInspector {
+            let clampedInspectorWidth = min(
+                configuration.inspectorMaximumWidth,
+                max(configuration.inspectorMinimumWidth, inspectorWidth)
+            )
+            let minimumInspectorDividerPosition = currentVisibility.showsSidebar
+                ? configuration.sidebarMinimumWidth
+                : 0
+            let inspectorDividerPosition = max(
+                minimumInspectorDividerPosition,
+                splitView.bounds.width - clampedInspectorWidth
+            )
+            splitView.setPosition(inspectorDividerPosition, ofDividerAt: 1)
+            lastKnownInspectorWidth = clampedInspectorWidth
+        }
+
+        if let bottomHeight = state.bottomHeight,
+           currentVisibility.showsBottomPanel,
+           let contentStackController {
+            let clampedBottomHeight = max(configuration.bottomMinimumHeight, bottomHeight)
+            let splitView = contentStackController.splitView
+            let bottomDividerPosition = max(0, splitView.bounds.height - clampedBottomHeight)
+            splitView.setPosition(bottomDividerPosition, ofDividerAt: 0)
+            lastKnownBottomHeight = clampedBottomHeight
+        }
+
+        splitView.adjustSubviews()
+        view.layoutSubtreeIfNeeded()
+        updateLastKnownDimensions()
+    }
+
+    private func reportActualStateIfNeeded(force: Bool = false) {
+        let state = snapshotLayoutState()
+        let actualVisibility = EditorSplitVisibility(
+            showsSidebar: state.showsSidebar,
+            showsInspector: state.showsInspector,
+            showsBottomPanel: state.showsBottomPanel
+        )
+
+        if force || actualVisibility != lastReportedVisibility {
+            currentVisibility = actualVisibility
+            lastReportedVisibility = actualVisibility
+            visibilityDidChange?(
+                actualVisibility.showsSidebar,
+                actualVisibility.showsInspector,
+                actualVisibility.showsBottomPanel
+            )
+        }
+
+        if force || state != lastReportedLayoutState {
+            if hasAppliedInitialState {
+                pendingLayoutState = state
+            }
+            lastReportedLayoutState = state
+            layoutStateDidChange?(state)
+        }
+    }
+
+    private func snapshotLayoutState() -> EditorSplitLayoutState {
+        guard isViewLoaded else {
+            return normalizedLayoutState(pendingLayoutState)
+        }
+
+        updateLastKnownDimensions()
+
+        return EditorSplitLayoutState(
+            sidebarWidth: lastKnownSidebarWidth,
+            inspectorWidth: lastKnownInspectorWidth,
+            bottomHeight: bottomViewController == nil ? nil : lastKnownBottomHeight,
+            showsSidebar: !sidebarItem.isCollapsed,
+            showsInspector: !inspectorItem.isCollapsed,
+            showsBottomPanel: bottomItem.map { !$0.isCollapsed } ?? false
+        )
+    }
+
+    private func updateLastKnownDimensions() {
+        guard isViewLoaded else {
+            return
+        }
+
+        let sidebarWidth = sidebarItem.viewController.view.frame.width
+        if sidebarItem.isCollapsed == false, sidebarWidth > 0 {
+            lastKnownSidebarWidth = sidebarWidth
+        }
+
+        let inspectorWidth = inspectorItem.viewController.view.frame.width
+        if inspectorItem.isCollapsed == false, inspectorWidth > 0 {
+            lastKnownInspectorWidth = inspectorWidth
+        }
+
+        if let bottomItem {
+            let bottomHeight = bottomItem.viewController.view.frame.height
+            if bottomItem.isCollapsed == false, bottomHeight > 0 {
+                lastKnownBottomHeight = bottomHeight
+            }
+        }
+    }
+
+    private func normalizedLayoutState(_ state: EditorSplitLayoutState) -> EditorSplitLayoutState {
+        EditorSplitLayoutState(
+            sidebarWidth: state.sidebarWidth,
+            inspectorWidth: state.inspectorWidth,
+            bottomHeight: bottomViewController == nil ? nil : state.bottomHeight,
+            showsSidebar: state.showsSidebar,
+            showsInspector: state.showsInspector,
+            showsBottomPanel: bottomViewController == nil ? false : state.showsBottomPanel
+        )
     }
 
 }
 
 @MainActor
 public final class BottomPanelSplitController: NSSplitViewController {
+    var layoutStateDidChange: (() -> Void)?
+
     public var configuration: EditorSplitConfiguration {
         didSet {
             guard isViewLoaded else {
@@ -321,6 +598,7 @@ public final class BottomPanelSplitController: NSSplitViewController {
         super.init(nibName: nil, bundle: nil)
 
         contentItem = NSSplitViewItem(viewController: content)
+        contentItem.holdingPriority = .defaultLow
         bottomItem = NSSplitViewItem(viewController: bottom)
         bottomItem.canCollapse = true
         bottomItem.holdingPriority = .defaultLow
@@ -340,6 +618,16 @@ public final class BottomPanelSplitController: NSSplitViewController {
 
         splitView.isVertical = false
         splitView.dividerStyle = .thin
+    }
+
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        layoutStateDidChange?()
+    }
+
+    public override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        layoutStateDidChange?()
     }
 
 }

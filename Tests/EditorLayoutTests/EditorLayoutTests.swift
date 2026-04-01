@@ -126,7 +126,7 @@ import Testing
 }
 
 @MainActor
-@Test func editorSplitViewUsesNativeSidebarAndResizableInspectorItems() async throws {
+@Test func editorSplitViewUsesPlainSidebarAndResizableInspectorItems() async throws {
     let controller = EditorSplitViewController(
         showsSidebar: true,
         showsInspector: true,
@@ -138,7 +138,7 @@ import Testing
     )
 
     #expect(controller.splitViewItems.count == 3)
-    #expect(controller.splitViewItems[0].behavior == .sidebar)
+    #expect(controller.splitViewItems[0].behavior == .default)
     #expect(controller.splitViewItems[1].behavior == .default)
     #expect(controller.splitViewItems[2].behavior == .inspector)
     #expect(controller.splitViewItems[2].minimumThickness == 220)
@@ -155,4 +155,205 @@ import Testing
         ofDividerAt: 1
     )
     #expect(dividerEffectiveRect.width >= 8)
+}
+
+@MainActor
+@Test func editorSplitControllerMakesContentTheFlexiblePane() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController()
+    )
+
+    _ = controller.view
+
+    #expect(controller.sidebarItem.holdingPriority == .defaultHigh)
+    #expect(controller.contentItem.holdingPriority == .defaultLow)
+    #expect(controller.inspectorItem.holdingPriority == .defaultHigh)
+}
+
+@MainActor
+@Test func editorSplitControllerUsesNativeSidebarAndInspectorBehaviors() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController()
+    )
+
+    _ = controller.view
+
+    #expect(controller.sidebarItem.behavior == .sidebar)
+    #expect(controller.contentItem.behavior == .default)
+    #expect(controller.inspectorItem.behavior == .inspector)
+}
+
+@MainActor
+@Test func editorSplitControllerExpandsDividerHitTargets() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController()
+    )
+
+    _ = controller.view
+    controller.view.frame = NSRect(x: 0, y: 0, width: 900, height: 450)
+    controller.view.layoutSubtreeIfNeeded()
+
+    let sidebarDividerRect = controller.splitView(
+        controller.splitView,
+        effectiveRect: .zero,
+        forDrawnRect: .zero,
+        ofDividerAt: 0
+    )
+    let inspectorDividerRect = controller.splitView(
+        controller.splitView,
+        effectiveRect: .zero,
+        forDrawnRect: .zero,
+        ofDividerAt: 1
+    )
+
+    #expect(sidebarDividerRect.width >= 8)
+    #expect(inspectorDividerRect.width >= 8)
+}
+
+@MainActor
+@Test func editorSplitControllerReportsManualVisibilityChanges() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController(),
+        bottom: NSViewController()
+    )
+
+    var reportedStates: [(Bool, Bool, Bool)] = []
+    controller.visibilityDidChange = { showsSidebar, showsInspector, showsBottomPanel in
+        reportedStates.append((showsSidebar, showsInspector, showsBottomPanel))
+    }
+
+    _ = controller.view
+    controller.view.frame = NSRect(x: 0, y: 0, width: 900, height: 450)
+    controller.view.layoutSubtreeIfNeeded()
+
+    controller.sidebarItem.isCollapsed = true
+    controller.inspectorItem.isCollapsed = true
+    controller.bottomItem?.isCollapsed = true
+    controller.view.layoutSubtreeIfNeeded()
+    controller.viewDidLayout()
+
+    #expect(reportedStates.contains(where: { $0 == (false, false, false) }))
+}
+
+@MainActor
+@Test func editorSplitControllerAppliesAndReportsLiveLayoutState() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController(),
+        bottom: NSViewController()
+    )
+
+    var reportedState: EditorSplitLayoutState?
+    controller.layoutStateDidChange = { state in
+        reportedState = state
+    }
+
+    let desiredState = EditorSplitLayoutState(
+        sidebarWidth: 250,
+        inspectorWidth: 320,
+        bottomHeight: 180,
+        showsSidebar: true,
+        showsInspector: true,
+        showsBottomPanel: true
+    )
+    controller.applyLayoutState(desiredState)
+
+    #expect(controller.layoutState == desiredState)
+
+    _ = controller.view
+    controller.view.frame = NSRect(x: 0, y: 0, width: 1200, height: 720)
+    controller.view.layoutSubtreeIfNeeded()
+    controller.viewDidAppear()
+
+    let currentState = controller.layoutState
+    #expect(currentState.sidebarWidth != nil)
+    #expect(currentState.inspectorWidth != nil)
+    #expect(abs((currentState.bottomHeight ?? 0) - 180) < 2)
+    #expect(reportedState == currentState)
+}
+
+@MainActor
+@Test func editorSplitControllerReportsBottomPanelResizesFromNestedSplitController() async throws {
+    let controller = EditorSplitController(
+        sidebar: NSViewController(),
+        content: NSViewController(),
+        inspector: NSViewController(),
+        bottom: NSViewController()
+    )
+
+    var reportedBottomHeight: CGFloat?
+    controller.layoutStateDidChange = { state in
+        reportedBottomHeight = state.bottomHeight
+    }
+
+    _ = controller.view
+    controller.view.frame = NSRect(x: 0, y: 0, width: 1100, height: 700)
+    controller.view.layoutSubtreeIfNeeded()
+    controller.viewDidAppear()
+
+    guard let contentStackController = controller.contentStackController else {
+        Issue.record("Expected content stack controller with bottom panel")
+        return
+    }
+
+    let splitView = contentStackController.splitView
+    let targetBottomHeight: CGFloat = 210
+    let bottomDividerPosition = max(0, splitView.bounds.height - targetBottomHeight)
+    splitView.setPosition(bottomDividerPosition, ofDividerAt: 0)
+    contentStackController.splitViewDidResizeSubviews(
+        Notification(name: NSSplitView.didResizeSubviewsNotification, object: splitView)
+    )
+
+    #expect(abs((reportedBottomHeight ?? 0) - targetBottomHeight) < 2)
+}
+
+@MainActor
+@Test func adjustedEditorSplitWindowFrameExpandsFromLeadingEdge() async throws {
+    let frame = adjustedEditorSplitWindowFrame(
+        currentFrame: NSRect(x: 300, y: 120, width: 860, height: 420),
+        visibleFrame: NSRect(x: 0, y: 0, width: 1600, height: 1000),
+        minWidth: 860,
+        widthDelta: 270,
+        edge: .leading
+    )
+
+    #expect(frame.origin.x == 30)
+    #expect(frame.width == 1130)
+}
+
+@MainActor
+@Test func adjustedEditorSplitWindowFrameStopsAtVisibleFrameWhenLeadingEdgeWouldOverflow() async throws {
+    let frame = adjustedEditorSplitWindowFrame(
+        currentFrame: NSRect(x: 100, y: 120, width: 860, height: 420),
+        visibleFrame: NSRect(x: 0, y: 0, width: 1200, height: 1000),
+        minWidth: 860,
+        widthDelta: 270,
+        edge: .leading
+    )
+
+    #expect(frame.origin.x == 0)
+    #expect(frame.width == 960)
+}
+
+@MainActor
+@Test func adjustedEditorSplitWindowFrameShrinksFromTrailingEdge() async throws {
+    let frame = adjustedEditorSplitWindowFrame(
+        currentFrame: NSRect(x: 100, y: 120, width: 1180, height: 420),
+        visibleFrame: NSRect(x: 0, y: 0, width: 1600, height: 1000),
+        minWidth: 860,
+        widthDelta: -320,
+        edge: .trailing
+    )
+
+    #expect(frame.origin.x == 100)
+    #expect(frame.width == 860)
 }
