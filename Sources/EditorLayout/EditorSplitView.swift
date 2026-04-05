@@ -2,6 +2,42 @@ import AppKit
 import SwiftUI
 
 @MainActor
+func editorSplitVisibilityBindings(
+    from layoutState: Binding<EditorSplitLayoutState>
+) -> (
+    showsSidebar: Binding<Bool>,
+    showsInspector: Binding<Bool>,
+    showsBottomPanel: Binding<Bool>
+) {
+    (
+        showsSidebar: Binding(
+            get: { layoutState.wrappedValue.showsSidebar },
+            set: { isVisible in
+                var state = layoutState.wrappedValue
+                state.showsSidebar = isVisible
+                layoutState.wrappedValue = state
+            }
+        ),
+        showsInspector: Binding(
+            get: { layoutState.wrappedValue.showsInspector },
+            set: { isVisible in
+                var state = layoutState.wrappedValue
+                state.showsInspector = isVisible
+                layoutState.wrappedValue = state
+            }
+        ),
+        showsBottomPanel: Binding(
+            get: { layoutState.wrappedValue.showsBottomPanel },
+            set: { isVisible in
+                var state = layoutState.wrappedValue
+                state.showsBottomPanel = isVisible
+                layoutState.wrappedValue = state
+            }
+        )
+    )
+}
+
+@MainActor
 public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NSViewControllerRepresentable {
     @Binding private var showsSidebar: Bool
     @Binding private var showsInspector: Bool
@@ -21,9 +57,10 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
         @ViewBuilder content: () -> Content,
         @ViewBuilder inspector: () -> Inspector
     ) {
-        _showsSidebar = .constant(layoutState.wrappedValue.showsSidebar)
-        _showsInspector = .constant(layoutState.wrappedValue.showsInspector)
-        _showsBottomPanel = .constant(layoutState.wrappedValue.showsBottomPanel)
+        let visibilityBindings = editorSplitVisibilityBindings(from: layoutState)
+        _showsSidebar = visibilityBindings.showsSidebar
+        _showsInspector = visibilityBindings.showsInspector
+        _showsBottomPanel = visibilityBindings.showsBottomPanel
         self.configuration = configuration
         self.sidebar = sidebar()
         self.content = content()
@@ -40,9 +77,10 @@ public struct EditorSplitView<Sidebar: View, Content: View, Inspector: View>: NS
         @ViewBuilder inspector: () -> Inspector,
         @ViewBuilder bottom: () -> Bottom
     ) {
-        _showsSidebar = .constant(layoutState.wrappedValue.showsSidebar)
-        _showsInspector = .constant(layoutState.wrappedValue.showsInspector)
-        _showsBottomPanel = .constant(layoutState.wrappedValue.showsBottomPanel)
+        let visibilityBindings = editorSplitVisibilityBindings(from: layoutState)
+        _showsSidebar = visibilityBindings.showsSidebar
+        _showsInspector = visibilityBindings.showsInspector
+        _showsBottomPanel = visibilityBindings.showsBottomPanel
         self.configuration = configuration
         self.sidebar = sidebar()
         self.content = content()

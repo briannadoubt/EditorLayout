@@ -92,6 +92,44 @@ private final class TestValidatedInterfaceItem: NSObject, NSValidatedUserInterfa
 }
 
 @MainActor
+@Test func editorSplitViewLayoutStateVisibilityBindingsStayLive() async throws {
+    var state = EditorSplitLayoutState(
+        sidebarWidth: 220,
+        inspectorWidth: 280,
+        bottomHeight: 180,
+        showsSidebar: true,
+        showsInspector: true,
+        showsBottomPanel: true
+    )
+    let layoutState = Binding(
+        get: { state },
+        set: { state = $0 }
+    )
+
+    let visibilityBindings = editorSplitVisibilityBindings(from: layoutState)
+
+    #expect(visibilityBindings.showsSidebar.wrappedValue == true)
+    #expect(visibilityBindings.showsInspector.wrappedValue == true)
+    #expect(visibilityBindings.showsBottomPanel.wrappedValue == true)
+
+    state.showsSidebar = false
+    state.showsInspector = false
+    state.showsBottomPanel = false
+
+    #expect(visibilityBindings.showsSidebar.wrappedValue == false)
+    #expect(visibilityBindings.showsInspector.wrappedValue == false)
+    #expect(visibilityBindings.showsBottomPanel.wrappedValue == false)
+
+    visibilityBindings.showsSidebar.wrappedValue = true
+    visibilityBindings.showsInspector.wrappedValue = true
+    visibilityBindings.showsBottomPanel.wrappedValue = true
+
+    #expect(state.showsSidebar == true)
+    #expect(state.showsInspector == true)
+    #expect(state.showsBottomPanel == true)
+}
+
+@MainActor
 @Test func editorSplitTypesExposeXcodeStyleStateAndConfiguration() async throws {
     let configuration = EditorSplitConfiguration(
         sidebarMinimumWidth: 190,
