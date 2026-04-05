@@ -7,6 +7,11 @@ enum EditorSplitWindowResizeEdge {
     case trailing
 }
 
+public enum EditorSplitWindowSidebarToggleBehavior: Sendable {
+    case keepsWindowFrame
+    case preservesContentWidth
+}
+
 @MainActor
 func adjustedEditorSplitWindowFrame(
     currentFrame: NSRect,
@@ -86,6 +91,7 @@ public extension EditorSplitController {
 @MainActor
 public final class EditorSplitWindowController: NSWindowController {
     public let editorSplitController: EditorSplitController
+    private let sidebarToggleBehavior: EditorSplitWindowSidebarToggleBehavior
 
     public var layoutState: EditorSplitLayoutState {
         editorSplitController.layoutState
@@ -112,17 +118,23 @@ public final class EditorSplitWindowController: NSWindowController {
         windowRect: NSRect = NSRect(x: 0, y: 0, width: 1200, height: 780),
         styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable],
         sidebarBackgroundMaterial: NSVisualEffectView.Material? = nil,
+        inspectorBackgroundMaterial: NSVisualEffectView.Material? = nil,
+        sidebarToggleBehavior: EditorSplitWindowSidebarToggleBehavior = .keepsWindowFrame,
         @ViewBuilder sidebar: () -> some View,
         @ViewBuilder content: () -> some View,
         @ViewBuilder inspector: () -> some View
     ) {
+        self.sidebarToggleBehavior = sidebarToggleBehavior
         editorSplitController = EditorSplitController(
             sidebar: EditorHostingViewController(
                 rootView: sidebar(),
                 backgroundMaterial: sidebarBackgroundMaterial
             ),
             content: EditorHostingViewController(rootView: content()),
-            inspector: EditorHostingViewController(rootView: inspector()),
+            inspector: EditorHostingViewController(
+                rootView: inspector(),
+                backgroundMaterial: inspectorBackgroundMaterial
+            ),
             configuration: configuration,
             initialState: initialState
         )
@@ -147,18 +159,24 @@ public final class EditorSplitWindowController: NSWindowController {
         windowRect: NSRect = NSRect(x: 0, y: 0, width: 1200, height: 780),
         styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable],
         sidebarBackgroundMaterial: NSVisualEffectView.Material? = nil,
+        inspectorBackgroundMaterial: NSVisualEffectView.Material? = nil,
+        sidebarToggleBehavior: EditorSplitWindowSidebarToggleBehavior = .keepsWindowFrame,
         @ViewBuilder sidebar: () -> some View,
         @ViewBuilder content: () -> some View,
         @ViewBuilder inspector: () -> some View,
         @ViewBuilder bottom: () -> some View
     ) {
+        self.sidebarToggleBehavior = sidebarToggleBehavior
         editorSplitController = EditorSplitController(
             sidebar: EditorHostingViewController(
                 rootView: sidebar(),
                 backgroundMaterial: sidebarBackgroundMaterial
             ),
             content: EditorHostingViewController(rootView: content()),
-            inspector: EditorHostingViewController(rootView: inspector()),
+            inspector: EditorHostingViewController(
+                rootView: inspector(),
+                backgroundMaterial: inspectorBackgroundMaterial
+            ),
             bottom: EditorAnyHostingViewController(rootView: AnyView(bottom())),
             configuration: configuration,
             initialState: initialState
@@ -198,6 +216,35 @@ public final class EditorSplitWindowController: NSWindowController {
         editorSplitController.setBottomPanelVisible(isVisible)
     }
 
+    @objc public func toggleSidebar(_ sender: Any?) {
+        setSidebarVisible(editorSplitController.sidebarItem.isCollapsed)
+    }
+
+    @objc public func toggleInspector(_ sender: Any?) {
+        setInspectorVisible(editorSplitController.inspectorItem.isCollapsed)
+    }
+
+    @objc public func toggleBottomPanel(_ sender: Any?) {
+        guard let bottomItem = editorSplitController.bottomItem else {
+            return
+        }
+
+        setBottomPanelVisible(bottomItem.isCollapsed)
+    }
+
+    @objc public func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(toggleSidebar(_:)):
+            return editorSplitController.sidebarItem?.canCollapse == true
+        case #selector(toggleInspector(_:)):
+            return editorSplitController.inspectorItem?.canCollapse == true
+        case #selector(toggleBottomPanel(_:)):
+            return editorSplitController.bottomItem?.canCollapse == true
+        default:
+            return true
+        }
+    }
+
     public func applyLayoutState(_ state: EditorSplitLayoutState) {
         editorSplitController.applyLayoutState(state)
     }
@@ -211,6 +258,12 @@ public final class EditorSplitWindowController: NSWindowController {
 
         guard let window else {
             applyVisibility(isVisible)
+            return
+        }
+
+        guard sidebarToggleBehavior == .preservesContentWidth else {
+            applyVisibility(isVisible)
+            editorSplitController.view.layoutSubtreeIfNeeded()
             return
         }
 

@@ -102,7 +102,6 @@ public final class EditorSplitController: NSSplitViewController {
     private var lastKnownBottomHeight: CGFloat?
     private var lastReportedVisibility: EditorSplitVisibility?
     private var lastReportedLayoutState: EditorSplitLayoutState?
-
     public init(
         sidebar: NSViewController,
         content: NSViewController,
@@ -126,6 +125,7 @@ public final class EditorSplitController: NSSplitViewController {
             showsBottomPanel: initialState.showsBottomPanel && bottom != nil
         )
         super.init(nibName: nil, bundle: nil)
+        setupLayout()
     }
 
     @available(*, unavailable)
@@ -137,9 +137,8 @@ public final class EditorSplitController: NSSplitViewController {
         super.viewDidLoad()
 
         splitView.isVertical = true
-        splitView.dividerStyle = .thin
+        splitView.dividerStyle = .paneSplitter
 
-        setupLayout()
         applyConfiguration()
         applyVisibility(currentVisibility)
     }
@@ -162,20 +161,30 @@ public final class EditorSplitController: NSSplitViewController {
         forDrawnRect drawnRect: NSRect,
         ofDividerAt dividerIndex: Int
     ) -> NSRect {
-        let baseRect = super.splitView(
-            splitView,
-            effectiveRect: proposedEffectiveRect,
-            forDrawnRect: drawnRect,
-            ofDividerAt: dividerIndex
-        )
+        let baseRect = proposedEffectiveRect.standardized
         let dividerRect = drawnRect.standardized.isEmpty
-            ? proposedEffectiveRect.standardized
+            ? baseRect
             : drawnRect.standardized
         let dragRect = splitView.isVertical
             ? dividerRect.insetBy(dx: -4, dy: 0)
             : dividerRect.insetBy(dx: 0, dy: -4)
 
         return baseRect.union(dragRect)
+    }
+
+    public override func splitView(
+        _ splitView: NSSplitView,
+        constrainSplitPosition proposedPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        guard let allowedRange = allowedDividerPositionRange(
+            in: splitView,
+            dividerIndex: dividerIndex
+        ) else {
+            return proposedPosition
+        }
+
+        return min(allowedRange.upperBound, max(allowedRange.lowerBound, proposedPosition))
     }
 
     public func replaceContentViewController(_ controller: NSViewController) {
@@ -288,15 +297,28 @@ public final class EditorSplitController: NSSplitViewController {
         setBottomPanelVisible(bottomItem.isCollapsed)
     }
 
+    public override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(toggleSidebar(_:)):
+            return sidebarItem?.canCollapse == true
+        case #selector(toggleInspector(_:)):
+            return inspectorItem?.canCollapse == true
+        case #selector(toggleBottomPanel(_:)):
+            return bottomItem?.canCollapse == true
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
+    }
+
     public override func splitViewDidResizeSubviews(_ notification: Notification) {
         super.splitViewDidResizeSubviews(notification)
         reportActualStateIfNeeded()
     }
 
     private func setupLayout() {
-        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarViewController)
+        sidebarItem = NSSplitViewItem(viewController: sidebarViewController)
         contentItem = NSSplitViewItem(viewController: contentViewController)
-        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorViewController)
+        inspectorItem = NSSplitViewItem(viewController: inspectorViewController)
 
         addSplitViewItem(sidebarItem)
         rebuildContentStack()
@@ -345,16 +367,16 @@ public final class EditorSplitController: NSSplitViewController {
 
     private func applyConfiguration() {
         sidebarItem.minimumThickness = configuration.sidebarMinimumWidth
-        sidebarItem.maximumThickness = configuration.sidebarMaximumWidth
+        sidebarItem.maximumThickness = resolvedEditorSplitMaximumThickness(configuration.sidebarMaximumWidth)
         sidebarItem.canCollapse = true
-        sidebarItem.holdingPriority = .defaultHigh
+        sidebarItem.holdingPriority = .defaultLow
 
         contentItem.minimumThickness = configuration.contentMinimumWidth
 
         inspectorItem.minimumThickness = configuration.inspectorMinimumWidth
-        inspectorItem.maximumThickness = configuration.inspectorMaximumWidth
+        inspectorItem.maximumThickness = resolvedEditorSplitMaximumThickness(configuration.inspectorMaximumWidth)
         inspectorItem.canCollapse = true
-        inspectorItem.holdingPriority = .defaultHigh
+        inspectorItem.holdingPriority = .defaultLow
 
         bottomItem?.minimumThickness = configuration.bottomMinimumHeight
         bottomItem?.holdingPriority = .defaultLow
@@ -451,9 +473,10 @@ public final class EditorSplitController: NSSplitViewController {
 
         if let sidebarWidth = state.sidebarWidth,
            currentVisibility.showsSidebar {
-            let clampedSidebarWidth = min(
-                configuration.sidebarMaximumWidth,
-                max(configuration.sidebarMinimumWidth, sidebarWidth)
+            let clampedSidebarWidth = clampedEditorSplitThickness(
+                sidebarWidth,
+                minimum: configuration.sidebarMinimumWidth,
+                maximum: configuration.sidebarMaximumWidth
             )
             splitView.setPosition(clampedSidebarWidth, ofDividerAt: 0)
             lastKnownSidebarWidth = clampedSidebarWidth
@@ -461,9 +484,10 @@ public final class EditorSplitController: NSSplitViewController {
 
         if let inspectorWidth = state.inspectorWidth,
            currentVisibility.showsInspector {
-            let clampedInspectorWidth = min(
-                configuration.inspectorMaximumWidth,
-                max(configuration.inspectorMinimumWidth, inspectorWidth)
+            let clampedInspectorWidth = clampedEditorSplitThickness(
+                inspectorWidth,
+                minimum: configuration.inspectorMinimumWidth,
+                maximum: configuration.inspectorMaximumWidth
             )
             let minimumInspectorDividerPosition = currentVisibility.showsSidebar
                 ? configuration.sidebarMinimumWidth
@@ -569,6 +593,48 @@ public final class EditorSplitController: NSSplitViewController {
         )
     }
 
+    private func allowedDividerPositionRange(
+        in splitView: NSSplitView,
+        dividerIndex: Int
+    ) -> ClosedRange<CGFloat>? {
+        allowedEditorSplitDividerPositionRange(
+            splitWidth: splitView.bounds.width,
+            dividerThickness: splitView.dividerThickness,
+            dividerKind: dividerKind(for: dividerIndex),
+            showsSidebar: currentVisibility.showsSidebar,
+            showsInspector: currentVisibility.showsInspector,
+            currentSidebarWidth: currentSidebarThickness(),
+            configuration: configuration
+        )
+    }
+
+    private func dividerKind(for dividerIndex: Int) -> EditorSplitDividerKind? {
+        switch (currentVisibility.showsSidebar, currentVisibility.showsInspector, dividerIndex) {
+        case (true, true, 0):
+            return .sidebar
+        case (true, true, 1):
+            return .inspector
+        case (true, false, 0):
+            return .sidebar
+        case (false, true, 0):
+            return .inspector
+        default:
+            return nil
+        }
+    }
+
+    private func currentSidebarThickness() -> CGFloat {
+        currentItemThickness(for: sidebarItem)
+    }
+
+    private func currentItemThickness(for item: NSSplitViewItem?) -> CGFloat {
+        guard let item, item.isCollapsed == false else {
+            return 0
+        }
+
+        return item.viewController.view.superview?.frame.width ?? item.viewController.view.frame.width
+    }
+
 }
 
 @MainActor
@@ -636,4 +702,71 @@ private struct EditorSplitVisibility: Equatable {
     var showsSidebar: Bool
     var showsInspector: Bool
     var showsBottomPanel: Bool
+}
+
+enum EditorSplitDividerKind {
+    case sidebar
+    case inspector
+}
+
+func allowedEditorSplitDividerPositionRange(
+    splitWidth: CGFloat,
+    dividerThickness: CGFloat,
+    dividerKind: EditorSplitDividerKind?,
+    showsSidebar: Bool,
+    showsInspector: Bool,
+    currentSidebarWidth: CGFloat,
+    configuration: EditorSplitConfiguration
+) -> ClosedRange<CGFloat>? {
+    switch dividerKind {
+    case .sidebar:
+        let dividerCount = showsInspector ? 2 : 1
+        let inspectorWidth = showsInspector ? configuration.inspectorMinimumWidth : 0
+        let minimumPosition = configuration.sidebarMinimumWidth
+        let maximumPosition = min(
+            resolvedEditorSplitMaximumThickness(configuration.sidebarMaximumWidth),
+            splitWidth
+                - configuration.contentMinimumWidth
+                - inspectorWidth
+                - (dividerThickness * CGFloat(dividerCount))
+        )
+
+        return min(maximumPosition, minimumPosition)...max(maximumPosition, minimumPosition)
+
+    case .inspector:
+        let leadingReservedWidth = showsSidebar ? currentSidebarWidth + dividerThickness : 0
+        let minimumPosition = max(
+            leadingReservedWidth + configuration.contentMinimumWidth,
+            splitWidth
+                - dividerThickness
+                - resolvedEditorSplitMaximumThickness(configuration.inspectorMaximumWidth)
+        )
+        let maximumPosition = splitWidth
+            - dividerThickness
+            - configuration.inspectorMinimumWidth
+
+        return min(maximumPosition, minimumPosition)...max(maximumPosition, minimumPosition)
+
+    case nil:
+        return nil
+    }
+}
+
+func resolvedEditorSplitMaximumThickness(_ configuredMaximum: CGFloat) -> CGFloat {
+    guard configuredMaximum != NSSplitViewItem.unspecifiedDimension else {
+        return 10_000
+    }
+
+    return configuredMaximum
+}
+
+func clampedEditorSplitThickness(
+    _ proposedThickness: CGFloat,
+    minimum: CGFloat,
+    maximum: CGFloat
+) -> CGFloat {
+    min(
+        resolvedEditorSplitMaximumThickness(maximum),
+        max(minimum, proposedThickness)
+    )
 }
