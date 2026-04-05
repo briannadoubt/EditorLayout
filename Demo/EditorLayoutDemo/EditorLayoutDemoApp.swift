@@ -14,11 +14,10 @@ struct EditorLayoutDemoApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = DemoWorkspaceModel()
     private var window: NSWindow?
     private var windowController: EditorSplitWindowController?
-    private var presetPicker: NSSegmentedControl?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let windowController = EditorSplitWindowController(
@@ -32,7 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
                 bottomMinimumHeight: 150
             ),
             initialState: model.layoutState,
-            sidebarBackgroundMaterial: .sidebar
+            windowRect: NSRect(x: 0, y: 0, width: 1440, height: 840),
+            sidebarBackgroundMaterial: .sidebar,
+            inspectorBackgroundMaterial: .sidebar
         ) {
             DemoSidebarView(model: model)
         } content: {
@@ -51,11 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
             return
         }
 
+        window.setFrameAutosaveName("EditorLayoutDemoWindow")
+        window.setFrame(NSRect(x: 0, y: 0, width: 1440, height: 840), display: false)
         window.center()
-        window.minSize = NSSize(width: 1080, height: 720)
-        window.toolbarStyle = .unifiedCompact
-        window.titlebarSeparatorStyle = .line
-        window.toolbar = makeToolbar()
+        window.minSize = NSSize(width: 1240, height: 720)
+        window.styleMask.insert(.fullSizeContentView)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isMovableByWindowBackground = false
+        window.toolbar = nil
         self.window = window
 
         model.record("Booted the demo workspace")
@@ -64,144 +70,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
-    }
-
-    private func makeToolbar() -> NSToolbar {
-        let toolbar = NSToolbar(identifier: "EditorLayoutDemoToolbar")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        return toolbar
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .toggleBottomPanel, .flexibleSpace, .layoutPresets, .toggleInspector]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .toggleBottomPanel, .toggleInspector, .layoutPresets, .flexibleSpace]
-    }
-
-    func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        switch itemIdentifier {
-        case .toggleSidebar:
-            return makeToolbarItem(
-                identifier: itemIdentifier,
-                label: "Navigator",
-                symbolName: "sidebar.leading",
-                action: #selector(toggleSidebar)
-            )
-
-        case .toggleBottomPanel:
-            return makeToolbarItem(
-                identifier: itemIdentifier,
-                label: "Console",
-                symbolName: "rectangle.bottomthird.inset.filled",
-                action: #selector(toggleBottomPanel)
-            )
-
-        case .toggleInspector:
-            return makeToolbarItem(
-                identifier: itemIdentifier,
-                label: "Inspector",
-                symbolName: "sidebar.trailing",
-                action: #selector(toggleInspector)
-            )
-
-        case .layoutPresets:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "Presets"
-            item.paletteLabel = "Layout Presets"
-            let control = NSSegmentedControl(
-                labels: DemoLayoutPreset.allCases.map(\.shortTitle),
-                trackingMode: .selectOne,
-                target: self,
-                action: #selector(selectPreset(_:))
-            )
-            control.segmentStyle = .rounded
-            control.selectedSegment = model.activePreset.rawValue
-            DemoLayoutPreset.allCases.indices.forEach { index in
-                control.setWidth(84, forSegment: index)
-            }
-            presetPicker = control
-            item.view = control
-            return item
-
-        default:
-            return nil
-        }
-    }
-
-    @objc private func toggleSidebar() {
-        guard let windowController else {
-            return
-        }
-
-        let willShowSidebar = windowController.editorSplitController.sidebarItem.isCollapsed
-        windowController.setSidebarVisible(willShowSidebar)
-        model.record(willShowSidebar ? "Opened the navigator" : "Collapsed the navigator")
-    }
-
-    @objc private func toggleInspector() {
-        guard let windowController else {
-            return
-        }
-
-        let willShowInspector = windowController.editorSplitController.inspectorItem.isCollapsed
-        windowController.setInspectorVisible(willShowInspector)
-        model.record(willShowInspector ? "Opened the inspector" : "Collapsed the inspector")
-    }
-
-    @objc private func toggleBottomPanel() {
-        guard let windowController else {
-            return
-        }
-
-        let willShowConsole = windowController.editorSplitController.bottomItem?.isCollapsed ?? false
-        windowController.setBottomPanelVisible(willShowConsole)
-        model.record(willShowConsole ? "Opened the console" : "Collapsed the console")
-    }
-
-    @objc private func selectPreset(_ sender: NSSegmentedControl) {
-        guard let preset = DemoLayoutPreset(rawValue: sender.selectedSegment) else {
-            return
-        }
-
-        applyPreset(preset)
-    }
-
-    private func applyPreset(_ preset: DemoLayoutPreset) {
-        guard let windowController else {
-            return
-        }
-
-        model.activePreset = preset
-        presetPicker?.selectedSegment = preset.rawValue
-
-        let targetState = preset.layoutState
-        windowController.setSidebarVisible(targetState.showsSidebar)
-        windowController.setInspectorVisible(targetState.showsInspector)
-        windowController.setBottomPanelVisible(targetState.showsBottomPanel)
-        windowController.applyLayoutState(targetState)
-
-        model.record("Applied the \(preset.title) preset")
-    }
-
-    private func makeToolbarItem(
-        identifier: NSToolbarItem.Identifier,
-        label: String,
-        symbolName: String,
-        action: Selector
-    ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: identifier)
-        item.label = label
-        item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)
-        item.target = self
-        item.action = action
-        return item
     }
 }
 
@@ -381,7 +249,8 @@ enum DemoFile: String, CaseIterable, Identifiable {
         case .demoApp:
             """
             let windowController = EditorSplitWindowController(
-                sidebarBackgroundMaterial: .sidebar
+                sidebarBackgroundMaterial: .sidebar,
+                inspectorBackgroundMaterial: .sidebar
             ) {
                 DemoSidebarView(model: model)
             } content: {
@@ -400,11 +269,4 @@ struct DemoLogEntry: Identifiable {
     let id = UUID()
     let timestamp = Date()
     let message: String
-}
-
-private extension NSToolbarItem.Identifier {
-    static let toggleSidebar = NSToolbarItem.Identifier("toggleSidebar")
-    static let toggleInspector = NSToolbarItem.Identifier("toggleInspector")
-    static let toggleBottomPanel = NSToolbarItem.Identifier("toggleBottomPanel")
-    static let layoutPresets = NSToolbarItem.Identifier("layoutPresets")
 }

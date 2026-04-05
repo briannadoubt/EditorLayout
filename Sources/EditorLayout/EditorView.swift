@@ -123,9 +123,14 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
 
         sidebarItem = NSSplitViewItem(viewController: sidebarController)
         contentItem = NSSplitViewItem(viewController: contentController)
-        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorController)
+        inspectorItem = NSSplitViewItem(viewController: inspectorController)
+        sidebarItem.canCollapse = true
+        sidebarItem.holdingPriority = .defaultHigh
+        contentItem.holdingPriority = .defaultLow
+        inspectorItem.canCollapse = true
+        inspectorItem.holdingPriority = .defaultHigh
         inspectorItem.minimumThickness = 220
-        inspectorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+        inspectorItem.maximumThickness = resolvedEditorSplitMaximumThickness(NSSplitViewItem.unspecifiedDimension)
 
         sidebarItem.isCollapsed = !showsSidebar
         inspectorItem.isCollapsed = !showsInspector
@@ -148,13 +153,22 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
     }
 
     public override func toggleSidebar(_ sender: Any?) {
-        super.toggleSidebar(sender)
-        scheduleVisibilityReport()
+        setSidebarVisible(sidebarItem.isCollapsed)
     }
 
     public override func toggleInspector(_ sender: Any?) {
-        super.toggleInspector(sender)
-        scheduleVisibilityReport()
+        setInspectorVisible(inspectorItem.isCollapsed)
+    }
+
+    public override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(toggleSidebar(_:)):
+            return sidebarItem.canCollapse
+        case #selector(toggleInspector(_:)):
+            return inspectorItem.canCollapse
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
     }
 
     public override func splitView(
@@ -194,12 +208,21 @@ public final class EditorSplitViewController<Sidebar: View, Content: View, Inspe
     }
 
     private func applyVisibility(showsSidebar: Bool, showsInspector: Bool) {
-        if showsSidebar != !sidebarItem.isCollapsed {
-            super.toggleSidebar(nil)
+        setSidebarVisible(showsSidebar)
+        setInspectorVisible(showsInspector)
+    }
+
+    private func setSidebarVisible(_ isVisible: Bool) {
+        if sidebarItem.isCollapsed == isVisible {
+            sidebarItem.isCollapsed = !isVisible
         }
 
-        if showsInspector != !inspectorItem.isCollapsed {
-            super.toggleInspector(nil)
+        scheduleVisibilityReport()
+    }
+
+    private func setInspectorVisible(_ isVisible: Bool) {
+        if inspectorItem.isCollapsed == isVisible {
+            inspectorItem.isCollapsed = !isVisible
         }
 
         scheduleVisibilityReport()
