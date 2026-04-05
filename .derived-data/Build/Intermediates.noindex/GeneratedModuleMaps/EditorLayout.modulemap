@@ -1,4 +1,0 @@
-module EditorLayout {
-header "EditorLayout-Swift.h"
-export *
-}

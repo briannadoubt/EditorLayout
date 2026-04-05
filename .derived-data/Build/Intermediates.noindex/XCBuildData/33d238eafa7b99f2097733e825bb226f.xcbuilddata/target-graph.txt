@@ -1,6 +1,0 @@
-Target dependency graph (3 targets)
-Target 'EditorLayoutDemo' in project 'EditorLayoutDemo'
-➜ Explicit dependency on target 'EditorLayout' in project 'EditorLayout'
-Target 'EditorLayout' in project 'EditorLayout'
-➜ Explicit dependency on target 'EditorLayout' in project 'EditorLayout'
-Target 'EditorLayout' in project 'EditorLayout' (no dependencies)
